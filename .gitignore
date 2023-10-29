@@ -3,3 +3,5 @@
 /.vs
 /x64
 /ExplorerCloseSample/x64
+/ExplorerLaunchEvent/obj
+/ExplorerLaunchEvent/bin
