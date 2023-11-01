@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Automation;
+using System.Windows.Forms;
 
 namespace Test
 {
@@ -75,9 +76,13 @@ namespace Test
                     var tgt = winElmMap.First().Value;
                     var srcRect = src.Current.BoundingRectangle;
                     var tgtRect = tgt.Current.BoundingRectangle;
+                    var srcScreen = Screen.FromHandle((IntPtr)src.Current.NativeWindowHandle);
+                    var tgtScreen = Screen.FromHandle((IntPtr)tgt.Current.NativeWindowHandle);
+                    var srcPosCorrect = new Point(srcScreen.WorkingArea.Left - srcScreen.Bounds.X, srcScreen.WorkingArea.Top - srcScreen.Bounds.Y);
+                    var tgtPosCorrect = new Point(tgtScreen.WorkingArea.Left - tgtScreen.Bounds.X, tgtScreen.WorkingArea.Top - tgtScreen.Bounds.Y);
                     SetForegroundWindow((IntPtr)src.Current.NativeWindowHandle);
-                    var x = (int)srcRect.X - 250;
-                    var y = (int)srcRect.Y + 20;
+                    var x = (int)srcRect.X - srcPosCorrect.X;
+                    var y = (int)srcRect.Y - srcPosCorrect.Y + 20;
                     SetCursorPos(x, y);
                     //System.Threading.Thread.Sleep(100);
                     mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
@@ -88,8 +93,8 @@ namespace Test
                     SetForegroundWindow((IntPtr)tgt.Current.NativeWindowHandle);
                     var smx = GetSystemMetrics(SM_CXSCREEN);
                     var smy = GetSystemMetrics(SM_CYSCREEN);
-                    x = ((int)tgtRect.Right - 190) * (65535 / smx);
-                    y = ((int)tgtRect.Y + 30) * (65535 / smy);
+                    x = ((int)tgtRect.Right - tgtPosCorrect.X) * (65535 / smx);
+                    y = ((int)tgtRect.Y - tgtPosCorrect.Y + 30) * (65535 / smy);
                     //SetCursorPos(x, y);
                     mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, x, y, 0, 0);
                     System.Threading.Thread.Sleep(100);
