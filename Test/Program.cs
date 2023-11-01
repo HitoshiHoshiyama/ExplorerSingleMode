@@ -5,15 +5,33 @@ using System.Linq;
 using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Automation;
+using System.Windows.Forms;
 
 namespace Test
 {
     internal class Program
     {
         [DllImport("user32.dll", SetLastError = true)]
-        public static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+        private static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern void SetCursorPos(int X, int Y);
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern void mouse_event(int dwFlags, int dx, int dy, int cButtons, int dwExtraInfo);
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern int GetSystemMetrics(int smIndex);
+
+        private const int MOUSEEVENTF_ABSOLUTE = 0x8000;
+        private const int MOUSEEVENTF_MOVE = 0x1;
+        private const int MOUSEEVENTF_LEFTDOWN = 0x2;
+        private const int MOUSEEVENTF_LEFTUP = 0x4;
+
+        private const int SM_CXSCREEN = 0;
+        private const int SM_CYSCREEN = 1;
 
         static void Main(string[] args)
         {
@@ -24,7 +42,6 @@ namespace Test
             {
                 var ws = o.Windows();
                 var coms = new List<dynamic>();
-                var autoElms = new List<AutomationElement>();
                 for (int i = 0; i < ws.Count; i++)
                 {
                     var ie = ws.Item(i);
@@ -40,13 +57,48 @@ namespace Test
                         coms.Add(ie);
                     }
                 }
+                var winElmMap = new Dictionary<IntPtr, AutomationElement>();
                 foreach (var comObj in coms)
                 {
                     if (comObj is not IDispatch dispatch) continue;
                     var typeInfo = dispatch.GetTypeInfo(0, 0);
-                    int pid;
-                    var hwnd2pid = GetWindowThreadProcessId((IntPtr)comObj.Hwnd, out pid);
+                    if (GetWindowThreadProcessId((IntPtr)comObj.Hwnd, out int pid) == 0) continue;
                     Console.WriteLine("{0}:{1:X} {2:D}", Marshal.GetTypeInfoName(typeInfo), ((IntPtr)comObj.Hwnd).ToInt64(), pid);
+                    if(winElmMap.ContainsKey((IntPtr)comObj.Hwnd)) { continue; }
+                    var winElm = AutomationElement.FromHandle((IntPtr)comObj.Hwnd);
+                    var titleElm = FindElements(winElm, "TITLE_BAR_SCAFFOLDING_WINDOW_CLASS");
+                    if (titleElm is null || titleElm.Count == 0) continue;
+                    winElmMap.Add((IntPtr)comObj.Hwnd, titleElm[0]);
+                }
+                if(winElmMap.Count > 1)
+                {
+                    var src = winElmMap.Last().Value;
+                    var tgt = winElmMap.First().Value;
+                    var srcRect = src.Current.BoundingRectangle;
+                    var tgtRect = tgt.Current.BoundingRectangle;
+                    var srcScreen = Screen.FromHandle((IntPtr)src.Current.NativeWindowHandle);
+                    var tgtScreen = Screen.FromHandle((IntPtr)tgt.Current.NativeWindowHandle);
+                    var srcPosCorrect = new Point(srcScreen.WorkingArea.Left - srcScreen.Bounds.X, srcScreen.WorkingArea.Top - srcScreen.Bounds.Y);
+                    var tgtPosCorrect = new Point(tgtScreen.WorkingArea.Left - tgtScreen.Bounds.X, tgtScreen.WorkingArea.Top - tgtScreen.Bounds.Y);
+                    SetForegroundWindow((IntPtr)src.Current.NativeWindowHandle);
+                    var x = (int)srcRect.X - srcPosCorrect.X;
+                    var y = (int)srcRect.Y - srcPosCorrect.Y + 20;
+                    SetCursorPos(x, y);
+                    //System.Threading.Thread.Sleep(100);
+                    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+                    System.Threading.Thread.Sleep(100);
+                    //SetCursorPos((int)x + 100, (int)y);
+                    mouse_event(MOUSEEVENTF_MOVE, 10, 0, 0, 0);
+                    System.Threading.Thread.Sleep(100);
+                    SetForegroundWindow((IntPtr)tgt.Current.NativeWindowHandle);
+                    var smx = GetSystemMetrics(SM_CXSCREEN);
+                    var smy = GetSystemMetrics(SM_CYSCREEN);
+                    x = ((int)tgtRect.Right - tgtPosCorrect.X) * (65535 / smx);
+                    y = ((int)tgtRect.Y - tgtPosCorrect.Y + 30) * (65535 / smy);
+                    //SetCursorPos(x, y);
+                    mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, x, y, 0, 0);
+                    System.Threading.Thread.Sleep(100);
+                    mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
                 }
             }
             finally
@@ -62,6 +114,14 @@ namespace Test
         {
             int GetTypeInfoCount();
             ITypeInfo GetTypeInfo(int iTInfo, int lcid);
+        }
+        private static AutomationElementCollection FindElements(AutomationElement rootElement, string automationClass)
+        {
+            return rootElement.FindAll(
+                TreeScope.Subtree,
+                new PropertyCondition(
+                  AutomationElement.ClassNameProperty,
+                  automationClass));
         }
     }
 }

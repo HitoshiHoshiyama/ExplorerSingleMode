@@ -1,3 +1,9 @@
 /Test/obj
 /Test/bin
 /.vs
+/x64
+/ExplorerCloseSample/x64
+/ExplorerLaunchEvent/obj
+/ExplorerLaunchEvent/bin
+/DetectExplorerOpen/obj
+/DetectExplorerOpen/bin
