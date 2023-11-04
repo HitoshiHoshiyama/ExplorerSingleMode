@@ -10,4 +10,8 @@
     <StartupObject>Program</StartupObject>
   </PropertyGroup>
 
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="copy &quot;$(ProjectDir)TaskRegist.ps1&quot; $(OutDir)" />
+  </Target>
+
 </Project>
