@@ -41,7 +41,7 @@ class Program
             Marshal.FinalReleaseComObject(shellInstance);
         }
 
-        // 母艦にするウィンドウを決定する
+        // 母艦にするウィンドウを決定する(存在すれば)
         IntPtr baseHwd = IntPtr.Zero;
         int tabMax = 0;
         foreach(var item in tabNumMap.ToList())
@@ -78,6 +78,7 @@ class Program
         winElmMap.Clear();
         tabNumMap.Clear();
 
+        // エクスプローラの起動イベントハンドラ
         Automation.AddAutomationEventHandler(
             WindowPattern.WindowOpenedEvent,
             AutomationElement.RootElement,
@@ -87,9 +88,9 @@ class Program
                 if (e.EventId == WindowPattern.WindowOpenedEvent)
                 {
                     AutomationElement element = sender as AutomationElement;
-                    // TODO: コントロールパネルの除外
                     if (element.Current.ClassName == "CabinetWClass")
                     {
+                        // エクスプローラのウィンドウが開かれた可能性があるためハンドルを通知
                         Console.WriteLine("エクスプローラーウィンドウ({0:x})が開かれました", element.Current.NativeWindowHandle);
                         EventQueue.Add((IntPtr)element.Current.NativeWindowHandle);
                     }
@@ -97,25 +98,27 @@ class Program
             });
 
         Console.CancelKeyPress += new ConsoleCancelEventHandler(OnCanceled);
+        // エクスプローラの起動イベント待ちループ
         while (true)
         {
             try
             {
                 IntPtr hwnd = EventQueue.Take(Cancel.Token);
                 var ExplorerInf = ExplorerSingleMode.WindowManager.GetExprolerInfo(hwnd, false);
+                // エクスプローラではないウィンドウハンドルだった場合はドラッグアンドドロップをスキップ
                 if (ExplorerInf is not null) ExplorerSingleMode.WindowManager.DragExplorerTab(ExplorerInf.Item1, tgt);
             }
-            catch(OperationCanceledException)
+            catch(OperationCanceledException)       // 終了通知
             {
                 Console.WriteLine("teminate request accepted.");
                 break;
             }
-            catch (NoTargetException ex)
+            catch (NoTargetException ex)            // ドロップターゲット消失
             {
                 Console.WriteLine(ex.ToString());
-                tgt = AutomationElement.FromHandle(ex.Hwnd);
+                tgt = AutomationElement.FromHandle(ex.Hwnd);    // ドロップソースを新たなドロップターゲットに設定
             }
-            catch (Exception ex)
+            catch (Exception ex)                    // その他例外はログ出力
             {
                 Console.WriteLine(ex.ToString());
             }
@@ -125,22 +128,20 @@ class Program
         EventQueue.Dispose();
     }
 
+    /// <summary>
+    /// 強制終了イベントハンドラ
+    /// </summary>
+    /// <param name="sender">イベント通知元が設定される</param>
+    /// <param name="e">イベント引数が設定される</param>
     private static void OnCanceled(object sender, ConsoleCancelEventArgs e)
     {
         Console.WriteLine("teminate requested.");
-        e.Cancel = true;
+        e.Cancel = true;            // イベント待ちループを正常終了させるため強制終了をキャンセル
         Cancel.Cancel();
     }
 
-    private static AutomationElementCollection FindElements(AutomationElement rootElement, string automationClass)
-    {
-        return rootElement.FindAll(
-            TreeScope.Subtree,
-            new PropertyCondition(
-              AutomationElement.ClassNameProperty,
-              automationClass));
-    }
-
+    /// <summary>イベントキュー</summary>
     private static BlockingCollection<IntPtr> EventQueue = new BlockingCollection<IntPtr>();
+    /// <summary>イベントキューのキャンセルオブジェクト</summary>
     private static CancellationTokenSource Cancel = new CancellationTokenSource();
 }
