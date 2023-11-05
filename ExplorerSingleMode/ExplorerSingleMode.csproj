@@ -10,8 +10,16 @@
     <StartupObject>Program</StartupObject>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'" />
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'" />
+
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="copy &quot;$(ProjectDir)TaskRegist.ps1&quot; $(OutDir)" />
+    <Exec Command="copy &quot;$(ProjectDir)TaskRegist.ps1&quot; $(OutDir)&#xD;&#xA;copy &quot;$(ProjectDir)TaskRegist.cmd&quot; $(OutDir)" />
+  </Target>
+
+  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
+    <Exec Command="del $(OutDir)*ps1&#xD;&#xA;del $(OutDir)*cmd" />
   </Target>
 
 </Project>

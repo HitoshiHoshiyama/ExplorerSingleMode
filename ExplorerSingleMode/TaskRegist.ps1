@@ -22,3 +22,6 @@ if(-not [string]::IsNullOrEmpty($IsExist))
 
 Register-ScheduledTask -TaskName "ExplorerSingleMode" -Action $TaskAction -Trigger $TaskTrigger -Settings $TaskOptions
 Write-Host タスク:ExplorerSingleMode を登録しました。
+
+$KeyIn = Read-Host "何かキーを押すと終了します。"
+Write-Host $KeyIn
