@@ -66,11 +66,7 @@ class Program
                 for (int idx = 0; idx < tabNumMap[item.Key]; idx++)
                 {
                     var src = item.Value;
-                    if (idx > 0)
-                    {
-                        // タブが減るとHWDが振り直されるため再取得
-                        src = ExplorerSingleMode.WindowManager.GetExprolerInfo(item.Key, false).Item1;
-                    }
+                    if (idx > 0) src = ExplorerSingleMode.WindowManager.GetExprolerInfo(item.Key, false).Item1; // タブが減るとHWDが振り直されるため再取得
                     ExplorerSingleMode.WindowManager.DragExplorerTab(src, tgt);
                 }
             }
@@ -78,26 +74,10 @@ class Program
         winElmMap.Clear();
         tabNumMap.Clear();
 
-        // エクスプローラの起動イベントハンドラ
-        Automation.AddAutomationEventHandler(
-            WindowPattern.WindowOpenedEvent,
-            AutomationElement.RootElement,
-            TreeScope.Subtree,
-            (sender, e) =>
-            {
-                if (e.EventId == WindowPattern.WindowOpenedEvent)
-                {
-                    AutomationElement element = sender as AutomationElement;
-                    if (element.Current.ClassName == "CabinetWClass")
-                    {
-                        // エクスプローラのウィンドウが開かれた可能性があるためハンドルを通知
-                        Console.WriteLine("エクスプローラーウィンドウ({0:x})が開かれました", element.Current.NativeWindowHandle);
-                        EventQueue.Add((IntPtr)element.Current.NativeWindowHandle);
-                    }
-                }
-            });
-
+        // イベントハンドラ設定
+        Automation.AddAutomationEventHandler(WindowPattern.WindowOpenedEvent, AutomationElement.RootElement, TreeScope.Subtree, OnOpenExplorer);
         Console.CancelKeyPress += new ConsoleCancelEventHandler(OnCanceled);
+
         // エクスプローラの起動イベント待ちループ
         while (true)
         {
@@ -124,6 +104,7 @@ class Program
             }
         }
         Console.WriteLine("teminated.");
+        Automation.RemoveAllEventHandlers();
         Cancel.Dispose();
         EventQueue.Dispose();
     }
@@ -138,6 +119,20 @@ class Program
         Console.WriteLine("teminate requested.");
         e.Cancel = true;            // イベント待ちループを正常終了させるため強制終了をキャンセル
         Cancel.Cancel();
+    }
+
+    private static void OnOpenExplorer(object sender, AutomationEventArgs e)
+    {
+        if (e.EventId == WindowPattern.WindowOpenedEvent)
+        {
+            AutomationElement element = sender as AutomationElement;
+            if (element.Current.ClassName == "CabinetWClass")
+            {
+                // エクスプローラのウィンドウが開かれた可能性があるためハンドルを通知
+                Console.WriteLine("エクスプローラーウィンドウ({0:x})が開かれました", element.Current.NativeWindowHandle);
+                EventQueue.Add((IntPtr)element.Current.NativeWindowHandle);
+            }
+        }
     }
 
     /// <summary>イベントキュー</summary>
