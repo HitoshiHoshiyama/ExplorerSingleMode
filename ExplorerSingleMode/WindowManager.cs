@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Runtime.InteropServices;
 using System.Windows.Automation;
+using NLog;
 
 namespace ExplorerSingleMode
 {
@@ -42,6 +38,11 @@ namespace ExplorerSingleMode
         /// <summary>ドロップ座標のY座標補正値</summary>
         private const int DROP_OFFSET_Y = 30;
 
+        public static void SetLogger(Logger logger)
+        {
+            WindowManager.logger = logger;
+        }
+
         /// <summary>
         /// エクスプローラのウィンドウハンドルからAutomationElementとタブ数を取得
         /// </summary>
@@ -55,10 +56,20 @@ namespace ExplorerSingleMode
         {
             var WinElm = AutomationElement.FromHandle(Hwnd);
             var TitleElm = FindElements(WinElm, "TITLE_BAR_SCAFFOLDING_WINDOW_CLASS");
-            if (TitleElm is null || TitleElm.Count == 0) return null;   // コントロールパネルはここで排除(Countが0になる)
+            if (TitleElm is null || TitleElm.Count == 0)
+            {
+                // コントロールパネルはここで排除(Countが0になる)
+                logger.Debug($"HWND:0x{Hwnd:x8} TITLE_BAR_SCAFFOLDING_WINDOW_CLASS not found.");
+                return null;
+            }
             if (NeedTabCount) ShowWindow(Hwnd, SW_SHOWNORMAL);          // 省くと最小化されたウィンドウのタブが0とカウントされる
             var TabNum = NeedTabCount ? FindElements(WinElm, "ShellTabWindowClass").Count : 1;
-            if (TabNum == 0) return null;
+            if (TabNum == 0)
+            {
+                logger.Debug($"HWND:0x{Hwnd:x8} ShellTabWindowClass not found.");
+                return null;
+            }
+            logger.Debug($"HWND:0x{Hwnd:x8} AutomationElement:0x{TitleElm[0].Current.NativeWindowHandle:x8} Tabs:{TabNum}");
             return new Tuple<AutomationElement, int>(TitleElm[0], TabNum);
         }
 
@@ -86,29 +97,30 @@ namespace ExplorerSingleMode
             var SrcRect = Source.Current.BoundingRectangle;
             var SrcScreen = Screen.FromHandle((IntPtr)Source.Current.NativeWindowHandle);
             var SrcPosCorrect = new Point(SrcScreen.WorkingArea.Left - SrcScreen.Bounds.X, SrcScreen.WorkingArea.Top - SrcScreen.Bounds.Y);
-            var x = (int)SrcRect.X - SrcPosCorrect.X;
-            var y = (int)SrcRect.Y - SrcPosCorrect.Y + DRAG_OFFSET_Y;
+            var DragX = (int)SrcRect.X - SrcPosCorrect.X;
+            var DragY = (int)SrcRect.Y - SrcPosCorrect.Y + DRAG_OFFSET_Y;
 
             // ドラッグアンドドロップ操作
-            SetCursorPos(x, y);
+            SetCursorPos(DragX, DragY);
             SetForegroundWindow((IntPtr)Source.Current.NativeWindowHandle);
-            System.Threading.Thread.Sleep(50);
+            System.Threading.Thread.Sleep(100);
             mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-            System.Threading.Thread.Sleep(50);
+            System.Threading.Thread.Sleep(100);
             mouse_event(MOUSEEVENTF_MOVE, DRAG_SLIDE_X, 0, 0, 0);
             System.Threading.Thread.Sleep(100);
             SetForegroundWindow((IntPtr)Target.Current.NativeWindowHandle);
             var smx = GetSystemMetrics(SM_CXSCREEN);
             var smy = GetSystemMetrics(SM_CYSCREEN);
-            x = ((int)TgtRect.Right - TgtPosCorrect.X) * (65535 / smx);
-            y = ((int)TgtRect.Y - TgtPosCorrect.Y + DROP_OFFSET_Y) * (65535 / smy);
-            mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, x, y, 0, 0);
-            System.Threading.Thread.Sleep(150);
+            var DropX = ((int)TgtRect.Right - TgtPosCorrect.X) * (65535 / smx);
+            var DropY = ((int)TgtRect.Y - TgtPosCorrect.Y + DROP_OFFSET_Y) * (65535 / smy);
+            mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, DropX, DropY, 0, 0);
+            System.Threading.Thread.Sleep(200);
             mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
             System.Threading.Thread.Sleep(900);
 
             // 移動先ウィンドウを元の状態に戻す
             if (IsMin) ShowWindow((IntPtr)Target.Current.NativeWindowHandle, SW_MINIMIZE);
+            logger.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY})");
         }
 
         /// <summary>
@@ -121,6 +133,8 @@ namespace ExplorerSingleMode
         {
             return rootElement.FindAll(TreeScope.Subtree, new PropertyCondition(AutomationElement.ClassNameProperty, automationClass));
         }
+
+        private static Logger logger { get; set; }
     }
 
     /// <summary>ドロップターゲットが存在しなかった場合にスローされる例外</summary>
