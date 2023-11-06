@@ -1,10 +1,10 @@
 ﻿using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using NLog;
 
 using ExplorerSingleMode;
+using Microsoft.Win32;
 
 class Program
 {
@@ -13,7 +13,7 @@ class Program
         logger.Info("Start.");
         ExplorerSingleMode.WindowManager.SetLogger(logger);
 
-        var winElmMap = new Dictionary<IntPtr, AutomationElement>();
+        var winElmMap = new Dictionary<IntPtr, Tuple<AutomationElement, IntPtr>>();
         var tabNumMap = new Dictionary<IntPtr, int>();
 
         var shellType = Type.GetTypeFromProgID("Shell.Application");
@@ -37,7 +37,7 @@ class Program
                 if (winElmMap.ContainsKey((IntPtr)comObj.Hwnd)) { continue; }
                 var ExplorerInfo = ExplorerSingleMode.WindowManager.GetExprolerInfo((IntPtr)comObj.Hwnd);
                 if (ExplorerInfo is null) continue;
-                winElmMap.Add((IntPtr)comObj.Hwnd, ExplorerInfo.Item1);
+                winElmMap.Add((IntPtr)comObj.Hwnd, new Tuple<AutomationElement, IntPtr>(ExplorerInfo.Item1, (IntPtr)comObj.Hwnd));
                 tabNumMap.Add((IntPtr)comObj.Hwnd, ExplorerInfo.Item2);
             }
         }
@@ -57,7 +57,7 @@ class Program
                 baseHwd = item.Key;
             }
         }
-        AutomationElement tgt = null;
+        Tuple<AutomationElement, IntPtr> tgt = null;
         if (baseHwd != IntPtr.Zero)
         {
             // 母艦とその他を分離
@@ -70,9 +70,9 @@ class Program
                 // タブ個数の分だけ繰り返し
                 for (int idx = 0; idx < tabNumMap[item.Key]; idx++)
                 {
-                    var src = item.Value;
+                    var src = item.Value.Item1;
                     if (idx > 0) src = ExplorerSingleMode.WindowManager.GetExprolerInfo(item.Key, false).Item1; // タブが減るとHWDが振り直されるため再取得
-                    ExplorerSingleMode.WindowManager.DragExplorerTab(src, tgt);
+                    ExplorerSingleMode.WindowManager.DragExplorerTab(new Tuple<AutomationElement, IntPtr>(src, item.Key), tgt);
                 }
             }
         }
@@ -82,8 +82,7 @@ class Program
 
         // イベントハンドラ設定
         Automation.AddAutomationEventHandler(WindowPattern.WindowOpenedEvent, AutomationElement.RootElement, TreeScope.Subtree, OnOpenExplorer);
-        Process.GetCurrentProcess().EnableRaisingEvents = true;
-        Process.GetCurrentProcess().Exited += new EventHandler(OnTermination);
+        SystemEvents.SessionEnding += OnTermination;
 
         // エクスプローラの起動イベント待ちループ
         var dupeCheck = new List<IntPtr>();
@@ -103,7 +102,7 @@ class Program
                 // エクスプローラではないウィンドウハンドルだった場合はドラッグアンドドロップをスキップ
                 if (ExplorerInf is not null)
                 {
-                    ExplorerSingleMode.WindowManager.DragExplorerTab(ExplorerInf.Item1, tgt);
+                    ExplorerSingleMode.WindowManager.DragExplorerTab(new Tuple<AutomationElement, IntPtr>(ExplorerInf.Item1, hwnd), tgt);
                     dupeCheck.Add(hwnd);
                 }
             }
@@ -115,7 +114,7 @@ class Program
             catch (NoTargetException ex)            // ドロップターゲット消失
             {
                 logger.Info("Lost drop target.");
-                tgt = AutomationElement.FromHandle(ex.Hwnd);    // ドロップソースを新たなドロップターゲットに設定
+                tgt =new Tuple<AutomationElement, IntPtr>(AutomationElement.FromHandle(ex.ElementHwnd), ex.ParentHwnd); // ドロップソースを新たなドロップターゲットに設定
             }
             catch (Exception ex)                    // その他例外はログ出力
             {
@@ -133,11 +132,11 @@ class Program
     /// </summary>
     /// <param name="sender">イベント通知元が設定される</param>
     /// <param name="e">イベント引数が設定される</param>
-    private static void OnTermination(object sender, EventArgs e)
+    private static void OnTermination(object sender, SessionEndingEventArgs e)
     {
-        logger.Debug("teminate requested.");
+        logger.Debug("Session end requested.");
         Cancel.Cancel();
-        Process.GetCurrentProcess().Exited -= new EventHandler(OnTermination);
+        SystemEvents.SessionEnding -= OnTermination;
     }
 
     /// <summary>

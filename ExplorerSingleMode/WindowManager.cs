@@ -76,39 +76,39 @@ namespace ExplorerSingleMode
         /// <summary>
         /// エクスプローラのタブをドラッグアンドドロップでウィンドウ間移動させる
         /// </summary>
-        /// <param name="Source">移動するタブの有るウィンドウのAutomationElement</param>
-        /// <param name="Target">移動先ウィンドウのAutomationElement</param>
+        /// <param name="Source">移動するタブの有るウィンドウのAutomationElementを指定</param>
+        /// <param name="Target">移動先ウィンドウのAutomationElementとウィンドウハンドルのTupleを指定</param>
         /// <exception cref="NoTargetException">移動先のエクスプローラが閉じられていた場合に発生</exception>
-        public static void DragExplorerTab(AutomationElement Source, AutomationElement Target)
+        public static void DragExplorerTab(Tuple<AutomationElement, IntPtr> Source, Tuple<AutomationElement, IntPtr> Target)
         {
             // 移動先のウインドウがない場合はSourceを次Target候補として例外で通知
-            if (Target is null) throw new NoTargetException((IntPtr)Source.Current.NativeWindowHandle);
+            if (Target is null) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
             // 移動先ウィンドウが最小化されている場合は戻す
-            var IsMin = IsIconic((IntPtr)Target.Current.NativeWindowHandle);
-            if (IsMin) ShowWindow((IntPtr)Target.Current.NativeWindowHandle, SW_SHOWNORMAL);
-            if(!Target.Current.IsEnabled)throw new NoTargetException((IntPtr)Source.Current.NativeWindowHandle);
+            var IsMin = IsIconic(Target.Item2);
+            if (IsMin) ShowWindow(Target.Item2, SW_SHOWNORMAL);
+            if(!Target.Item1.Current.IsEnabled)throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
 
             // 移動先ウィンドウの座標情報取得(タスクバーが上/左にあった場合の補正情報込み)
-            var TgtRect = Target.Current.BoundingRectangle;
-            var TgtScreen = Screen.FromHandle((IntPtr)Target.Current.NativeWindowHandle);
+            var TgtRect = Target.Item1.Current.BoundingRectangle;
+            var TgtScreen = Screen.FromHandle((IntPtr)Target.Item1.Current.NativeWindowHandle);
             var TgtPosCorrect = new Point(TgtScreen.WorkingArea.Left - TgtScreen.Bounds.X, TgtScreen.WorkingArea.Top - TgtScreen.Bounds.Y);
 
             // 移動するウィンドウの座標情報取得(タスクバーが上/左にあった場合の補正情報込み)
-            var SrcRect = Source.Current.BoundingRectangle;
-            var SrcScreen = Screen.FromHandle((IntPtr)Source.Current.NativeWindowHandle);
+            var SrcRect = Source.Item1.Current.BoundingRectangle;
+            var SrcScreen = Screen.FromHandle((IntPtr)Source.Item1.Current.NativeWindowHandle);
             var SrcPosCorrect = new Point(SrcScreen.WorkingArea.Left - SrcScreen.Bounds.X, SrcScreen.WorkingArea.Top - SrcScreen.Bounds.Y);
             var DragX = (int)SrcRect.X - SrcPosCorrect.X;
             var DragY = (int)SrcRect.Y - SrcPosCorrect.Y + DRAG_OFFSET_Y;
 
             // ドラッグアンドドロップ操作
             SetCursorPos(DragX, DragY);
-            SetForegroundWindow((IntPtr)Source.Current.NativeWindowHandle);
+            SetForegroundWindow((IntPtr)Source.Item1.Current.NativeWindowHandle);
             System.Threading.Thread.Sleep(100);
             mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
             System.Threading.Thread.Sleep(100);
             mouse_event(MOUSEEVENTF_MOVE, DRAG_SLIDE_X, 0, 0, 0);
             System.Threading.Thread.Sleep(100);
-            SetForegroundWindow((IntPtr)Target.Current.NativeWindowHandle);
+            SetForegroundWindow(Target.Item2);
             var smx = GetSystemMetrics(SM_CXSCREEN);
             var smy = GetSystemMetrics(SM_CYSCREEN);
             var DropX = ((int)TgtRect.Right - TgtPosCorrect.X) * (65535 / smx);
@@ -119,7 +119,7 @@ namespace ExplorerSingleMode
             System.Threading.Thread.Sleep(900);
 
             // 移動先ウィンドウを元の状態に戻す
-            if (IsMin) ShowWindow((IntPtr)Target.Current.NativeWindowHandle, SW_MINIMIZE);
+            if (IsMin) ShowWindow(Target.Item2, SW_MINIMIZE);
             logger.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY})");
         }
 
@@ -143,9 +143,16 @@ namespace ExplorerSingleMode
         /// <summary>
         /// コンストラクタ
         /// </summary>
-        /// <param name="Hwnd">ドロップソースのウィンドウハンドルを指定</param>
-        public NoTargetException(IntPtr Hwnd) { this.Hwnd = Hwnd; }
+        /// <param name="ElementHwnd">ドロップソースのウィンドウハンドルを指定</param>
+        /// <param name="ParentHwnd">ドロップソースの親ウィンドウハンドルを指定</param>
+        public NoTargetException(IntPtr ElementHwnd, IntPtr ParentHwnd)
+        {
+            this.ElementHwnd = ElementHwnd;
+            this.ParentHwnd = ParentHwnd;
+        }
         /// <summary>ドロップソースのウィンドウハンドルを取得</summary>
-        public IntPtr Hwnd { get; private set; }
+        public IntPtr ElementHwnd { get; private set; }
+        /// <summary>ドロップソースの親ウィンドウハンドルを取得</summary>
+        public IntPtr ParentHwnd { get; private set; }
     }
 }
