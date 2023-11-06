@@ -1,14 +1,19 @@
 ﻿using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Windows.Automation;
+using NLog;
 
 using ExplorerSingleMode;
+using Microsoft.Win32;
 
 class Program
 {
     static void Main(string[] args)
     {
-        var winElmMap = new Dictionary<IntPtr, AutomationElement>();
+        logger.Info("Start.");
+        ExplorerSingleMode.WindowManager.SetLogger(logger);
+
+        var winElmMap = new Dictionary<IntPtr, Tuple<AutomationElement, IntPtr>>();
         var tabNumMap = new Dictionary<IntPtr, int>();
 
         var shellType = Type.GetTypeFromProgID("Shell.Application");
@@ -32,7 +37,7 @@ class Program
                 if (winElmMap.ContainsKey((IntPtr)comObj.Hwnd)) { continue; }
                 var ExplorerInfo = ExplorerSingleMode.WindowManager.GetExprolerInfo((IntPtr)comObj.Hwnd);
                 if (ExplorerInfo is null) continue;
-                winElmMap.Add((IntPtr)comObj.Hwnd, ExplorerInfo.Item1);
+                winElmMap.Add((IntPtr)comObj.Hwnd, new Tuple<AutomationElement, IntPtr>(ExplorerInfo.Item1, (IntPtr)comObj.Hwnd));
                 tabNumMap.Add((IntPtr)comObj.Hwnd, ExplorerInfo.Item2);
             }
         }
@@ -44,7 +49,7 @@ class Program
         // 母艦にするウィンドウを決定する(存在すれば)
         IntPtr baseHwd = IntPtr.Zero;
         int tabMax = 0;
-        foreach(var item in tabNumMap.ToList())
+        foreach (var item in tabNumMap.ToList())
         {
             if (tabMax < item.Value)
             {
@@ -52,7 +57,7 @@ class Program
                 baseHwd = item.Key;
             }
         }
-        AutomationElement tgt = null;
+        Tuple<AutomationElement, IntPtr> tgt = null;
         if (baseHwd != IntPtr.Zero)
         {
             // 母艦とその他を分離
@@ -65,62 +70,80 @@ class Program
                 // タブ個数の分だけ繰り返し
                 for (int idx = 0; idx < tabNumMap[item.Key]; idx++)
                 {
-                    var src = item.Value;
+                    var src = item.Value.Item1;
                     if (idx > 0) src = ExplorerSingleMode.WindowManager.GetExprolerInfo(item.Key, false).Item1; // タブが減るとHWDが振り直されるため再取得
-                    ExplorerSingleMode.WindowManager.DragExplorerTab(src, tgt);
+                    ExplorerSingleMode.WindowManager.DragExplorerTab(new Tuple<AutomationElement, IntPtr>(src, item.Key), tgt);
                 }
             }
         }
         winElmMap.Clear();
         tabNumMap.Clear();
+        logger.Info("Tab merge complete.");
 
         // イベントハンドラ設定
         Automation.AddAutomationEventHandler(WindowPattern.WindowOpenedEvent, AutomationElement.RootElement, TreeScope.Subtree, OnOpenExplorer);
-        Console.CancelKeyPress += new ConsoleCancelEventHandler(OnCanceled);
+        SystemEvents.SessionEnding += OnTermination;
 
         // エクスプローラの起動イベント待ちループ
+        var dupeCheck = new List<IntPtr>();
         while (true)
         {
             try
             {
                 IntPtr hwnd = EventQueue.Take(Cancel.Token);
+                // ウィンドウひとつにつきイベントが2回発生するため重複チェック
+                if (dupeCheck.Contains(hwnd))
+                {
+                    dupeCheck.Remove(hwnd);
+                    logger.Debug($"Duplicate Hwnd:0x{hwnd:x8}");
+                    continue;
+                }
                 var ExplorerInf = ExplorerSingleMode.WindowManager.GetExprolerInfo(hwnd, false);
                 // エクスプローラではないウィンドウハンドルだった場合はドラッグアンドドロップをスキップ
-                if (ExplorerInf is not null) ExplorerSingleMode.WindowManager.DragExplorerTab(ExplorerInf.Item1, tgt);
+                if (ExplorerInf is not null)
+                {
+                    ExplorerSingleMode.WindowManager.DragExplorerTab(new Tuple<AutomationElement, IntPtr>(ExplorerInf.Item1, hwnd), tgt);
+                    dupeCheck.Add(hwnd);
+                }
             }
-            catch(OperationCanceledException)       // 終了通知
+            catch (OperationCanceledException)       // 終了通知
             {
-                Console.WriteLine("teminate request accepted.");
+                logger.Debug("Teminate request accepted.");
                 break;
             }
             catch (NoTargetException ex)            // ドロップターゲット消失
             {
-                Console.WriteLine(ex.ToString());
-                tgt = AutomationElement.FromHandle(ex.Hwnd);    // ドロップソースを新たなドロップターゲットに設定
+                logger.Info("Lost drop target.");
+                tgt =new Tuple<AutomationElement, IntPtr>(AutomationElement.FromHandle(ex.ElementHwnd), ex.ParentHwnd); // ドロップソースを新たなドロップターゲットに設定
             }
             catch (Exception ex)                    // その他例外はログ出力
             {
-                Console.WriteLine(ex.ToString());
+                logger.Warn(ex.ToString());
             }
         }
-        Console.WriteLine("teminated.");
         Automation.RemoveAllEventHandlers();
         Cancel.Dispose();
         EventQueue.Dispose();
+        logger.Info("Teminated.");
     }
 
     /// <summary>
-    /// 強制終了イベントハンドラ
+    /// 終了イベントハンドラ
     /// </summary>
     /// <param name="sender">イベント通知元が設定される</param>
     /// <param name="e">イベント引数が設定される</param>
-    private static void OnCanceled(object sender, ConsoleCancelEventArgs e)
+    private static void OnTermination(object sender, SessionEndingEventArgs e)
     {
-        Console.WriteLine("teminate requested.");
-        e.Cancel = true;            // イベント待ちループを正常終了させるため強制終了をキャンセル
+        logger.Debug("Session end requested.");
         Cancel.Cancel();
+        SystemEvents.SessionEnding -= OnTermination;
     }
 
+    /// <summary>
+    /// エクスプローラオープンハンドラ
+    /// </summary>
+    /// <param name="sender">イベント通知元が設定される</param>
+    /// <param name="e">イベント引数が設定される</param>
     private static void OnOpenExplorer(object sender, AutomationEventArgs e)
     {
         if (e.EventId == WindowPattern.WindowOpenedEvent)
@@ -129,7 +152,7 @@ class Program
             if (element.Current.ClassName == "CabinetWClass")
             {
                 // エクスプローラのウィンドウが開かれた可能性があるためハンドルを通知
-                Console.WriteLine("エクスプローラーウィンドウ({0:x})が開かれました", element.Current.NativeWindowHandle);
+                logger.Info($"Detect open explorer window(0x{element.Current.NativeWindowHandle:x8}).");
                 EventQueue.Add((IntPtr)element.Current.NativeWindowHandle);
             }
         }
@@ -139,4 +162,7 @@ class Program
     private static BlockingCollection<IntPtr> EventQueue = new BlockingCollection<IntPtr>();
     /// <summary>イベントキューのキャンセルオブジェクト</summary>
     private static CancellationTokenSource Cancel = new CancellationTokenSource();
+
+    private static Logger logger = LogManager.GetCurrentClassLogger();
+
 }
