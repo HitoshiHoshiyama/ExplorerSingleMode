@@ -20,7 +20,7 @@ if(-not [string]::IsNullOrEmpty($IsExist))
     Unregister-ScheduledTask -TaskName "ExplorerSingleMode" -Confirm:$false
 }
 
-Register-ScheduledTask -TaskName "ExplorerSingleMode" -Action $TaskAction -Trigger $TaskTrigger -Settings $TaskOptions
+Register-ScheduledTask -TaskName "ExplorerSingleMode" -Action $TaskAction -Trigger $TaskTrigger -Settings $TaskOptions -RunLevel "Highest" -Description "エクスプローラのタブをひとつのウィンドウにまとめます。"
 Write-Host タスク:ExplorerSingleMode を登録しました。
 
 $KeyIn = Read-Host "何かキーを押すと終了します。"

@@ -19,6 +19,9 @@ namespace ExplorerSingleMode
         static extern int GetSystemMetrics(int smIndex);
         [DllImport("user32.dll", SetLastError = true)]
         static extern bool IsIconic(IntPtr hWnd);
+        [System.Runtime.InteropServices.DllImportAttribute("user32.dll", EntryPoint = "BlockInput")]
+        [return: System.Runtime.InteropServices.MarshalAsAttribute(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static extern bool BlockInput([System.Runtime.InteropServices.MarshalAsAttribute(System.Runtime.InteropServices.UnmanagedType.Bool)] bool fBlockIt);
 
         private const int MOUSEEVENTF_ABSOLUTE = 0x8000;
         private const int MOUSEEVENTF_MOVE = 0x1;
@@ -81,46 +84,55 @@ namespace ExplorerSingleMode
         /// <exception cref="NoTargetException">移動先のエクスプローラが閉じられていた場合に発生</exception>
         public static void DragExplorerTab(Tuple<AutomationElement, IntPtr> Source, Tuple<AutomationElement, IntPtr> Target)
         {
-            // 移動先のウインドウがない場合はSourceを次Target候補として例外で通知
-            if (Target is null) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
-            // 移動先ウィンドウが最小化されている場合は戻す
-            var IsMin = IsIconic(Target.Item2);
-            if (IsMin) ShowWindow(Target.Item2, SW_SHOWNORMAL);
-            if(!Target.Item1.Current.IsEnabled)throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
+            try
+            {
+                BlockInput(true);
 
-            // 移動先ウィンドウの座標情報取得(タスクバーが上/左にあった場合の補正情報込み)
-            var TgtRect = Target.Item1.Current.BoundingRectangle;
-            var TgtScreen = Screen.FromHandle((IntPtr)Target.Item1.Current.NativeWindowHandle);
-            var TgtPosCorrect = new Point(TgtScreen.WorkingArea.Left - TgtScreen.Bounds.X, TgtScreen.WorkingArea.Top - TgtScreen.Bounds.Y);
+                // 移動先のウインドウがない場合はSourceを次Target候補として例外で通知
+                if (Target is null) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
+                // 移動先ウィンドウが最小化されている場合は戻す
+                var IsMin = IsIconic(Target.Item2);
+                if (IsMin) ShowWindow(Target.Item2, SW_SHOWNORMAL);
+                if (!Target.Item1.Current.IsEnabled) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
 
-            // 移動するウィンドウの座標情報取得(タスクバーが上/左にあった場合の補正情報込み)
-            var SrcRect = Source.Item1.Current.BoundingRectangle;
-            var SrcScreen = Screen.FromHandle((IntPtr)Source.Item1.Current.NativeWindowHandle);
-            var SrcPosCorrect = new Point(SrcScreen.WorkingArea.Left - SrcScreen.Bounds.X, SrcScreen.WorkingArea.Top - SrcScreen.Bounds.Y);
-            var DragX = (int)SrcRect.X - SrcPosCorrect.X;
-            var DragY = (int)SrcRect.Y - SrcPosCorrect.Y + DRAG_OFFSET_Y;
+                // 移動先ウィンドウの座標情報取得(タスクバーが上/左にあった場合の補正情報込み)
+                var TgtRect = Target.Item1.Current.BoundingRectangle;
+                var TgtScreen = Screen.FromHandle((IntPtr)Target.Item1.Current.NativeWindowHandle);
+                var TgtPosCorrect = new Point(TgtScreen.WorkingArea.Left - TgtScreen.Bounds.X, TgtScreen.WorkingArea.Top - TgtScreen.Bounds.Y);
 
-            // ドラッグアンドドロップ操作
-            SetCursorPos(DragX, DragY);
-            SetForegroundWindow((IntPtr)Source.Item1.Current.NativeWindowHandle);
-            System.Threading.Thread.Sleep(100);
-            mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-            System.Threading.Thread.Sleep(100);
-            mouse_event(MOUSEEVENTF_MOVE, DRAG_SLIDE_X, 0, 0, 0);
-            System.Threading.Thread.Sleep(100);
-            SetForegroundWindow(Target.Item2);
-            var smx = GetSystemMetrics(SM_CXSCREEN);
-            var smy = GetSystemMetrics(SM_CYSCREEN);
-            var DropX = ((int)TgtRect.Right - TgtPosCorrect.X) * (65535 / smx);
-            var DropY = ((int)TgtRect.Y - TgtPosCorrect.Y + DROP_OFFSET_Y) * (65535 / smy);
-            mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, DropX, DropY, 0, 0);
-            System.Threading.Thread.Sleep(200);
-            mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
-            System.Threading.Thread.Sleep(900);
+                // 移動するウィンドウの座標情報取得(タスクバーが上/左にあった場合の補正情報込み)
+                var SrcRect = Source.Item1.Current.BoundingRectangle;
+                var SrcScreen = Screen.FromHandle((IntPtr)Source.Item1.Current.NativeWindowHandle);
+                var SrcPosCorrect = new Point(SrcScreen.WorkingArea.Left - SrcScreen.Bounds.X, SrcScreen.WorkingArea.Top - SrcScreen.Bounds.Y);
+                var DragX = (int)SrcRect.X - SrcPosCorrect.X;
+                var DragY = (int)SrcRect.Y - SrcPosCorrect.Y + DRAG_OFFSET_Y;
 
-            // 移動先ウィンドウを元の状態に戻す
-            if (IsMin) ShowWindow(Target.Item2, SW_MINIMIZE);
-            logger.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY})");
+                // ドラッグアンドドロップ操作
+                SetCursorPos(DragX, DragY);
+                SetForegroundWindow((IntPtr)Source.Item1.Current.NativeWindowHandle);
+                System.Threading.Thread.Sleep(100);
+                mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
+                System.Threading.Thread.Sleep(100);
+                mouse_event(MOUSEEVENTF_MOVE, DRAG_SLIDE_X, 0, 0, 0);
+                System.Threading.Thread.Sleep(100);
+                SetForegroundWindow(Target.Item2);
+                var smx = GetSystemMetrics(SM_CXSCREEN);
+                var smy = GetSystemMetrics(SM_CYSCREEN);
+                var DropX = ((int)TgtRect.Right - TgtPosCorrect.X) * (65535 / smx);
+                var DropY = ((int)TgtRect.Y - TgtPosCorrect.Y + DROP_OFFSET_Y) * (65535 / smy);
+                mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, DropX, DropY, 0, 0);
+                System.Threading.Thread.Sleep(200);
+                mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+                System.Threading.Thread.Sleep(900);
+
+                // 移動先ウィンドウを元の状態に戻す
+                if (IsMin) ShowWindow(Target.Item2, SW_MINIMIZE);
+                logger.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY})");
+            }
+            finally
+            {
+                BlockInput(false);
+            }
         }
 
         /// <summary>
