@@ -11,7 +11,9 @@ class Program
     static void Main(string[] args)
     {
         logger.Info("Start.");
+        logger.Info($"Arguments count:{args.Length} value:{(args.Length > 0 ? args[0] : string.Empty)}");
         ExplorerSingleMode.WindowManager.SetLogger(logger);
+        ExplorerSingleMode.WindowManager.OperationWaitOffset = args.Length > 0 && int.TryParse(args[0], out int argv) ? int.Parse(args[0]) : 0;
 
         var winElmMap = new Dictionary<IntPtr, Tuple<AutomationElement, IntPtr>>();
         var tabNumMap = new Dictionary<IntPtr, int>();

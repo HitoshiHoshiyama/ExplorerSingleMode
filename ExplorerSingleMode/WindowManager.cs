@@ -115,24 +115,24 @@ namespace ExplorerSingleMode
                 // ドラッグアンドドロップ操作
                 SetCursorPos(DragX, DragY);
                 SetForegroundWindow((IntPtr)Source.Item1.Current.NativeWindowHandle);
-                System.Threading.Thread.Sleep(100);
+                System.Threading.Thread.Sleep(100 + OperationWaitOffset);
                 mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-                System.Threading.Thread.Sleep(100);
+                System.Threading.Thread.Sleep(100 + OperationWaitOffset);
                 mouse_event(MOUSEEVENTF_MOVE, DRAG_SLIDE_X, 0, 0, 0);
-                System.Threading.Thread.Sleep(100);
+                System.Threading.Thread.Sleep(100 + OperationWaitOffset);
                 SetForegroundWindow(Target.Item2);
                 var smx = GetSystemMetrics(SM_CXSCREEN);
                 var smy = GetSystemMetrics(SM_CYSCREEN);
                 var DropX = ((int)TgtRect.Right - TgtPosCorrect.X) * (65535 / smx);
                 var DropY = ((int)TgtRect.Y - TgtPosCorrect.Y + DROP_OFFSET_Y) * (65535 / smy);
                 mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, DropX, DropY, 0, 0);
-                System.Threading.Thread.Sleep(200);
+                System.Threading.Thread.Sleep(200 + OperationWaitOffset);
                 mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
-                System.Threading.Thread.Sleep(900);
+                System.Threading.Thread.Sleep(900 + OperationWaitOffset);
 
                 // 移動先ウィンドウを元の状態に戻す
                 if (IsMin) ShowWindow(Target.Item2, SW_MINIMIZE);
-                LoggerInstance?.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY})");
+                LoggerInstance?.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY}), operation wait offset:{OperationWaitOffset}(msec)");
             }
             finally
             {
@@ -152,8 +152,11 @@ namespace ExplorerSingleMode
         }
 
 #nullable enable
+        /// <summary>ロガーのインスタンス。</summary>
         private static Logger? LoggerInstance { get; set; }
 #nullable disable
+        /// <summary>マウス操作の合間に挿入する待ち時間の補正値。</summary>
+        public static int OperationWaitOffset { get; set; } = 0;
     }
 
     /// <summary>ドロップターゲットが存在しなかった場合にスローされる例外。</summary>
