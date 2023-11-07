@@ -48,7 +48,7 @@ namespace ExplorerSingleMode
         /// <param name="logger">ログ出力に使用するロガーを指定する。</param>
         public static void SetLogger(Logger logger)
         {
-            WindowManager.logger = logger;
+            WindowManager.LoggerInstance = logger;
         }
 
         /// <summary>
@@ -67,17 +67,17 @@ namespace ExplorerSingleMode
             if (TitleElm is null || TitleElm.Count == 0)
             {
                 // コントロールパネルはここで排除(Countが0になる)
-                logger?.Debug($"HWND:0x{Hwnd:x8} TITLE_BAR_SCAFFOLDING_WINDOW_CLASS not found.");
+                LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} TITLE_BAR_SCAFFOLDING_WINDOW_CLASS not found.");
                 return null;
             }
             if (NeedTabCount) ShowWindow(Hwnd, SW_SHOWNORMAL);          // 省くと最小化されたウィンドウのタブが0とカウントされる
             var TabNum = NeedTabCount ? FindElements(WinElm, "ShellTabWindowClass").Count : 1;
             if (TabNum == 0)
             {
-                logger?.Debug($"HWND:0x{Hwnd:x8} ShellTabWindowClass not found.");
+                LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} ShellTabWindowClass not found.");
                 return null;
             }
-            logger?.Debug($"HWND:0x{Hwnd:x8} AutomationElement:0x{TitleElm[0].Current.NativeWindowHandle:x8} Tabs:{TabNum}");
+            LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} AutomationElement:0x{TitleElm[0].Current.NativeWindowHandle:x8} Tabs:{TabNum}");
             return new Tuple<AutomationElement, int>(TitleElm[0], TabNum);
         }
 
@@ -132,7 +132,7 @@ namespace ExplorerSingleMode
 
                 // 移動先ウィンドウを元の状態に戻す
                 if (IsMin) ShowWindow(Target.Item2, SW_MINIMIZE);
-                logger?.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY})");
+                LoggerInstance?.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY})");
             }
             finally
             {
@@ -151,7 +151,9 @@ namespace ExplorerSingleMode
             return rootElement.FindAll(TreeScope.Subtree, new PropertyCondition(AutomationElement.ClassNameProperty, automationClass));
         }
 
-        private static Logger? logger { get; set; }
+#nullable enable
+        private static Logger? LoggerInstance { get; set; }
+#nullable disable
     }
 
     /// <summary>ドロップターゲットが存在しなかった場合にスローされる例外。</summary>
