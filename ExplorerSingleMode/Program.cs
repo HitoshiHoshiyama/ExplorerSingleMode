@@ -128,10 +128,10 @@ class Program
     }
 
     /// <summary>
-    /// 終了イベントハンドラ
+    /// 終了イベントハンドラ。
     /// </summary>
-    /// <param name="sender">イベント通知元が設定される</param>
-    /// <param name="e">イベント引数が設定される</param>
+    /// <param name="sender">イベント通知元が設定される。</param>
+    /// <param name="e">イベント引数が設定される。</param>
     private static void OnTermination(object sender, SessionEndingEventArgs e)
     {
         logger.Debug("Session end requested.");
@@ -140,10 +140,10 @@ class Program
     }
 
     /// <summary>
-    /// エクスプローラオープンハンドラ
+    /// エクスプローラオープンハンドラ。
     /// </summary>
-    /// <param name="sender">イベント通知元が設定される</param>
-    /// <param name="e">イベント引数が設定される</param>
+    /// <param name="sender">イベント通知元が設定される。</param>
+    /// <param name="e">イベント引数が設定される。</param>
     private static void OnOpenExplorer(object sender, AutomationEventArgs e)
     {
         if (e.EventId == WindowPattern.WindowOpenedEvent)
@@ -158,11 +158,12 @@ class Program
         }
     }
 
-    /// <summary>イベントキュー</summary>
+    /// <summary>エクスプローラのウィンドウ生成イベントキュー。</summary>
     private static BlockingCollection<IntPtr> EventQueue = new BlockingCollection<IntPtr>();
-    /// <summary>イベントキューのキャンセルオブジェクト</summary>
+    /// <summary>イベントキューのキャンセルオブジェクト。</summary>
     private static CancellationTokenSource Cancel = new CancellationTokenSource();
 
+    /// <summary>ロガーインスタンス(Nlog)。</summary>
     private static Logger logger = LogManager.GetCurrentClassLogger();
 
 }

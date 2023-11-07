@@ -4,7 +4,7 @@ using NLog;
 
 namespace ExplorerSingleMode
 {
-    /// <summary>エクスプローラのタブ操作を行うクラス</summary>
+    /// <summary>エクスプローラのタブ操作を行うクラス。</summary>
     static internal class WindowManager
     {
         [DllImport("user32.dll", SetLastError = true)]
@@ -34,23 +34,28 @@ namespace ExplorerSingleMode
         private const int SW_SHOWNORMAL = 1;
         private const int SW_MINIMIZE = 6;
 
-        /// <summary>ドラッグ時のY座標補正値</summary>
+        /// <summary>ドラッグ時のY座標補正値。</summary>
         private const int DRAG_OFFSET_Y = 20;
-        /// <summary>ドラッグ操作時のX軸マウス移動量</summary>
+        /// <summary>ドラッグ操作時のX軸マウス移動量。</summary>
         private const int DRAG_SLIDE_X = 10;
-        /// <summary>ドロップ座標のY座標補正値</summary>
+        /// <summary>ドロップ座標のY座標補正値。</summary>
         private const int DROP_OFFSET_Y = 30;
 
+        /// <summary>
+        /// <br>ロガーを設定する。</br>
+        /// <br>未設定の場合はログ出力しない。</br>
+        /// </summary>
+        /// <param name="logger">ログ出力に使用するロガーを指定する。</param>
         public static void SetLogger(Logger logger)
         {
             WindowManager.logger = logger;
         }
 
         /// <summary>
-        /// エクスプローラのウィンドウハンドルからAutomationElementとタブ数を取得
+        /// エクスプローラのウィンドウハンドルからAutomationElementとタブ数を取得する。
         /// </summary>
-        /// <param name="Hwnd">エクスプローラのウィンドウハンドル</param>
-        /// <param name="NeedTabCount">タブ数をカウントする場合はtrue</param>
+        /// <param name="Hwnd">エクスプローラのウィンドウハンドルを指定する。</param>
+        /// <param name="NeedTabCount">タブ数をカウントする場合はtrueを指定する。省略可能(既定値はtrue)。</param>
         /// <returns>
         /// <br>タブ部分のコントロールハンドルとタブ数のTupleを返す。</br>
         /// <br>エクスプローラのではないウィンドウハンドルを渡された場合はnullを返す。</br>
@@ -62,26 +67,26 @@ namespace ExplorerSingleMode
             if (TitleElm is null || TitleElm.Count == 0)
             {
                 // コントロールパネルはここで排除(Countが0になる)
-                logger.Debug($"HWND:0x{Hwnd:x8} TITLE_BAR_SCAFFOLDING_WINDOW_CLASS not found.");
+                logger?.Debug($"HWND:0x{Hwnd:x8} TITLE_BAR_SCAFFOLDING_WINDOW_CLASS not found.");
                 return null;
             }
             if (NeedTabCount) ShowWindow(Hwnd, SW_SHOWNORMAL);          // 省くと最小化されたウィンドウのタブが0とカウントされる
             var TabNum = NeedTabCount ? FindElements(WinElm, "ShellTabWindowClass").Count : 1;
             if (TabNum == 0)
             {
-                logger.Debug($"HWND:0x{Hwnd:x8} ShellTabWindowClass not found.");
+                logger?.Debug($"HWND:0x{Hwnd:x8} ShellTabWindowClass not found.");
                 return null;
             }
-            logger.Debug($"HWND:0x{Hwnd:x8} AutomationElement:0x{TitleElm[0].Current.NativeWindowHandle:x8} Tabs:{TabNum}");
+            logger?.Debug($"HWND:0x{Hwnd:x8} AutomationElement:0x{TitleElm[0].Current.NativeWindowHandle:x8} Tabs:{TabNum}");
             return new Tuple<AutomationElement, int>(TitleElm[0], TabNum);
         }
 
         /// <summary>
-        /// エクスプローラのタブをドラッグアンドドロップでウィンドウ間移動させる
+        /// エクスプローラのタブをドラッグアンドドロップでウィンドウ間移動させる。
         /// </summary>
-        /// <param name="Source">移動するタブの有るウィンドウのAutomationElementを指定</param>
-        /// <param name="Target">移動先ウィンドウのAutomationElementとウィンドウハンドルのTupleを指定</param>
-        /// <exception cref="NoTargetException">移動先のエクスプローラが閉じられていた場合に発生</exception>
+        /// <param name="Source">移動するタブの有るウィンドウのAutomationElementを指定する。</param>
+        /// <param name="Target">移動先ウィンドウのAutomationElementとウィンドウハンドルのTupleを指定する。</param>
+        /// <exception cref="NoTargetException">移動先のエクスプローラが閉じられていた場合に発生する。</exception>
         public static void DragExplorerTab(Tuple<AutomationElement, IntPtr> Source, Tuple<AutomationElement, IntPtr> Target)
         {
             try
@@ -127,7 +132,7 @@ namespace ExplorerSingleMode
 
                 // 移動先ウィンドウを元の状態に戻す
                 if (IsMin) ShowWindow(Target.Item2, SW_MINIMIZE);
-                logger.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY})");
+                logger?.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY})");
             }
             finally
             {
@@ -136,35 +141,35 @@ namespace ExplorerSingleMode
         }
 
         /// <summary>
-        /// 親ウィンドウのAutomationElementを起点として指定クラスのAutomationElementを検索
+        /// 親ウィンドウのAutomationElementを起点として指定クラスのAutomationElementを検索する。
         /// </summary>
-        /// <param name="rootElement">検索の起点とするAutomationElementを指定</param>
-        /// <param name="automationClass">検索するウィンドウクラス名を指定</param>
-        /// <returns>クラス名が一致したAutomationElementのAutomationElementCollectionを返す</returns>
+        /// <param name="rootElement">検索の起点とするAutomationElementを指定する。</param>
+        /// <param name="automationClass">検索するウィンドウクラス名を指定する。</param>
+        /// <returns>クラス名が一致したAutomationElementのAutomationElementCollectionを返す。</returns>
         private static AutomationElementCollection FindElements(AutomationElement rootElement, string automationClass)
         {
             return rootElement.FindAll(TreeScope.Subtree, new PropertyCondition(AutomationElement.ClassNameProperty, automationClass));
         }
 
-        private static Logger logger { get; set; }
+        private static Logger? logger { get; set; }
     }
 
-    /// <summary>ドロップターゲットが存在しなかった場合にスローされる例外</summary>
+    /// <summary>ドロップターゲットが存在しなかった場合にスローされる例外。</summary>
     internal class NoTargetException : Exception
     {
         /// <summary>
-        /// コンストラクタ
+        /// コンストラクタ。
         /// </summary>
-        /// <param name="ElementHwnd">ドロップソースのウィンドウハンドルを指定</param>
-        /// <param name="ParentHwnd">ドロップソースの親ウィンドウハンドルを指定</param>
+        /// <param name="ElementHwnd">ドロップソースのウィンドウハンドルを指定する。</param>
+        /// <param name="ParentHwnd">ドロップソースの親ウィンドウハンドルを指定する。</param>
         public NoTargetException(IntPtr ElementHwnd, IntPtr ParentHwnd)
         {
             this.ElementHwnd = ElementHwnd;
             this.ParentHwnd = ParentHwnd;
         }
-        /// <summary>ドロップソースのウィンドウハンドルを取得</summary>
+        /// <summary>ドロップソースのウィンドウハンドルを取得する。</summary>
         public IntPtr ElementHwnd { get; private set; }
-        /// <summary>ドロップソースの親ウィンドウハンドルを取得</summary>
+        /// <summary>ドロップソースの親ウィンドウハンドルを取得する。</summary>
         public IntPtr ParentHwnd { get; private set; }
     }
 }
