@@ -64,21 +64,30 @@ namespace ExplorerSingleMode
         {
             var WinElm = AutomationElement.FromHandle(Hwnd);
             var TitleElm = FindElements(WinElm, "TITLE_BAR_SCAFFOLDING_WINDOW_CLASS");
-            if (TitleElm is null || TitleElm.Count == 0)
+            bool IsMin = false;
+            try
             {
-                // コントロールパネルはここで排除(Countが0になる)
-                LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} TITLE_BAR_SCAFFOLDING_WINDOW_CLASS not found.");
-                return null;
+                if (TitleElm is null || TitleElm.Count == 0)
+                {
+                    // コントロールパネルはここで排除(Countが0になる)
+                    LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} TITLE_BAR_SCAFFOLDING_WINDOW_CLASS not found.");
+                    return null;
+                }
+                if (NeedTabCount)
+                {
+                    IsMin = IsIconic(Hwnd);
+                    if (IsMin) ShowWindow(Hwnd, SW_SHOWNORMAL);// 省くと最小化されたウィンドウのタブが0とカウントされる
+                }
+                var TabNum = NeedTabCount ? FindElements(WinElm, "ShellTabWindowClass").Count : 1;
+                if (TabNum == 0)
+                {
+                    LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} ShellTabWindowClass not found.");
+                    return null;
+                }
+                LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} AutomationElement:0x{TitleElm[0].Current.NativeWindowHandle:x8} Tabs:{TabNum}");
+                return new Tuple<AutomationElement, int>(TitleElm[0], TabNum);
             }
-            if (NeedTabCount) ShowWindow(Hwnd, SW_SHOWNORMAL);          // 省くと最小化されたウィンドウのタブが0とカウントされる
-            var TabNum = NeedTabCount ? FindElements(WinElm, "ShellTabWindowClass").Count : 1;
-            if (TabNum == 0)
-            {
-                LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} ShellTabWindowClass not found.");
-                return null;
-            }
-            LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} AutomationElement:0x{TitleElm[0].Current.NativeWindowHandle:x8} Tabs:{TabNum}");
-            return new Tuple<AutomationElement, int>(TitleElm[0], TabNum);
+            finally { if (IsMin) ShowWindow(Hwnd, SW_MINIMIZE); }
         }
 
         /// <summary>
@@ -140,6 +149,18 @@ namespace ExplorerSingleMode
             }
         }
 
+        public static void StoreMousePosition()
+        {
+            PointStack.Push(Cursor.Position);
+        }
+        public static void RestoreMousePosition()
+        {
+            if (PointStack.Count > 0) Cursor.Position = PointStack.Pop();
+        }
+
+        /// <summary>マウス操作の合間に挿入する待ち時間の補正値。</summary>
+        public static int OperationWaitOffset { get; set; } = 0;
+
         /// <summary>
         /// 親ウィンドウのAutomationElementを起点として指定クラスのAutomationElementを検索する。
         /// </summary>
@@ -155,8 +176,9 @@ namespace ExplorerSingleMode
         /// <summary>ロガーのインスタンス。</summary>
         private static Logger? LoggerInstance { get; set; }
 #nullable disable
-        /// <summary>マウス操作の合間に挿入する待ち時間の補正値。</summary>
-        public static int OperationWaitOffset { get; set; } = 0;
+
+        /// <summary>座標のスタック。</summary>
+        private static Stack<Point> PointStack = new Stack<Point>();
     }
 
     /// <summary>ドロップターゲットが存在しなかった場合にスローされる例外。</summary>

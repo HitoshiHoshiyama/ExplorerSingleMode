@@ -60,6 +60,7 @@ class Program
             }
         }
         Tuple<AutomationElement, IntPtr> tgt = null;
+        WindowManager.StoreMousePosition();
         if (baseHwd != IntPtr.Zero)
         {
             // 母艦とその他を分離
@@ -78,6 +79,7 @@ class Program
                 }
             }
         }
+        WindowManager.RestoreMousePosition();
         winElmMap.Clear();
         tabNumMap.Clear();
         logger.Info("Tab merge complete.");
@@ -104,7 +106,9 @@ class Program
                 // エクスプローラではないウィンドウハンドルだった場合はドラッグアンドドロップをスキップ
                 if (ExplorerInf is not null)
                 {
+                    WindowManager.StoreMousePosition();
                     ExplorerSingleMode.WindowManager.DragExplorerTab(new Tuple<AutomationElement, IntPtr>(ExplorerInf.Item1, hwnd), tgt);
+                    WindowManager.RestoreMousePosition();
                     dupeCheck.Add(hwnd);
                 }
             }
@@ -117,6 +121,7 @@ class Program
             {
                 logger.Info("Lost drop target.");
                 tgt =new Tuple<AutomationElement, IntPtr>(AutomationElement.FromHandle(ex.ElementHwnd), ex.ParentHwnd); // ドロップソースを新たなドロップターゲットに設定
+                WindowManager.RestoreMousePosition();
             }
             catch (Exception ex)                    // その他例外はログ出力
             {
