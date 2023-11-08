@@ -45,3 +45,6 @@ Windows11でタブ化したエクスプローラをシングルウィンドウ�
 ## TODO
 
 - 操作デモ
+
+Copyright © 2023 Hitoshi Hoshiyama All Rights Reserved.  
+This project is licensed under the MIT License, see the [this site](https://opensource.org/licenses/mit-license.php).
