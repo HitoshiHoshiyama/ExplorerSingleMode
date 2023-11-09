@@ -1,2 +1,2 @@
 cd /d %~dp0
-powershell .\TaskRemove.ps1
+powershell -ExecutionPolicy Bypass .\TaskRemove.ps1

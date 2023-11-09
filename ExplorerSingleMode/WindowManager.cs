@@ -34,6 +34,8 @@ namespace ExplorerSingleMode
         private const int SW_SHOWNORMAL = 1;
         private const int SW_MINIMIZE = 6;
 
+        /// <summary>ドラッグ時のX座標補正値。</summary>
+        private const int DRAG_OFFSET_X = 50;
         /// <summary>ドラッグ時のY座標補正値。</summary>
         private const int DRAG_OFFSET_Y = 20;
         /// <summary>ドラッグ操作時のX軸マウス移動量。</summary>
@@ -109,17 +111,14 @@ namespace ExplorerSingleMode
                 if (IsMin) ShowWindow(Target.Item2, SW_SHOWNORMAL);
                 if (!Target.Item1.Current.IsEnabled) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
 
-                // 移動先ウィンドウの座標情報取得(タスクバーが上/左にあった場合の補正情報込み)
+                // 移動先ウィンドウの座標情報取得
                 var TgtRect = Target.Item1.Current.BoundingRectangle;
-                var TgtScreen = Screen.FromHandle((IntPtr)Target.Item1.Current.NativeWindowHandle);
-                var TgtPosCorrect = new Point(TgtScreen.WorkingArea.Left - TgtScreen.Bounds.X, TgtScreen.WorkingArea.Top - TgtScreen.Bounds.Y);
 
-                // 移動するウィンドウの座標情報取得(タスクバーが上/左にあった場合の補正情報込み)
-                var SrcRect = Source.Item1.Current.BoundingRectangle;
-                var SrcScreen = Screen.FromHandle((IntPtr)Source.Item1.Current.NativeWindowHandle);
-                var SrcPosCorrect = new Point(SrcScreen.WorkingArea.Left - SrcScreen.Bounds.X, SrcScreen.WorkingArea.Top - SrcScreen.Bounds.Y);
-                var DragX = (int)SrcRect.X - SrcPosCorrect.X;
-                var DragY = (int)SrcRect.Y - SrcPosCorrect.Y + DRAG_OFFSET_Y;
+                // 移動するウィンドウの座標情報取得
+                var Parent = AutomationElement.FromHandle(Source.Item2);
+                var SrcRect = Parent.Current.BoundingRectangle;
+                var DragX = (int)SrcRect.X + DRAG_OFFSET_X;
+                var DragY = (int)SrcRect.Y + DRAG_OFFSET_Y;
 
                 // ドラッグアンドドロップ操作
                 SetCursorPos(DragX, DragY);
@@ -132,8 +131,8 @@ namespace ExplorerSingleMode
                 SetForegroundWindow(Target.Item2);
                 var smx = GetSystemMetrics(SM_CXSCREEN);
                 var smy = GetSystemMetrics(SM_CYSCREEN);
-                var DropX = ((int)TgtRect.Right - TgtPosCorrect.X) * (65535 / smx);
-                var DropY = ((int)TgtRect.Y - TgtPosCorrect.Y + DROP_OFFSET_Y) * (65535 / smy);
+                var DropX = ((int)TgtRect.Right) * (65535 / smx);
+                var DropY = ((int)TgtRect.Y + DROP_OFFSET_Y) * (65535 / smy);
                 mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, DropX, DropY, 0, 0);
                 System.Threading.Thread.Sleep(200 + OperationWaitOffset);
                 mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
