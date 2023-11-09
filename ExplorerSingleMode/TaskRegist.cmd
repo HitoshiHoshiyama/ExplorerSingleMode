@@ -1,2 +1,2 @@
 cd /d %~dp0
-powershell .\TaskRegist.ps1
+powershell -ExecutionPolicy Bypass .\TaskRegist.ps1
