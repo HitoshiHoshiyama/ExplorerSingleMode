@@ -1,6 +1,8 @@
 ﻿using System.Runtime.InteropServices;
 using System.Windows.Automation;
 using NLog;
+using ExplorerSingleMode;
+using System.Runtime.CompilerServices;
 
 namespace ExplorerSingleMode
 {
@@ -11,8 +13,12 @@ namespace ExplorerSingleMode
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         [DllImport("user32.dll", SetLastError = true)]
         static extern void SetCursorPos(int X, int Y);
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool SetForegroundWindow(IntPtr hWnd);
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfo", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern Boolean SystemParametersInfoGet(UInt32 action, UInt32 param, ref UInt32 vparam, UInt32 init);
+        [DllImport("user32.dll", EntryPoint = "SystemParametersInfo", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern Boolean SystemParametersInfoSet(UInt32 action, UInt32 param, UInt32 vparam, UInt32 init);
         [DllImport("user32.dll", SetLastError = true)]
         static extern void mouse_event(int dwFlags, int dx, int dy, int cButtons, int dwExtraInfo);
         [DllImport("user32.dll", SetLastError = true)]
@@ -34,14 +40,22 @@ namespace ExplorerSingleMode
         private const int SW_SHOWNORMAL = 1;
         private const int SW_MINIMIZE = 6;
 
+        private const uint SPI_GETFOREGROUNDLOCKTIMEOUT = 0x2000;
+        private const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
+        private const int SPIF_SENDCHANGE = 2;
+
         /// <summary>ドラッグ時のX座標補正値。</summary>
         private const int DRAG_OFFSET_X = 50;
         /// <summary>ドラッグ時のY座標補正値。</summary>
         private const int DRAG_OFFSET_Y = 20;
         /// <summary>ドラッグ操作時のX軸マウス移動量。</summary>
         private const int DRAG_SLIDE_X = 10;
+        /// <summary>ドロップ座標のX座標補正値。</summary>
+        private const int DROP_OFFSET_X = 50;
         /// <summary>ドロップ座標のY座標補正値。</summary>
         private const int DROP_OFFSET_Y = 30;
+        /// <summary>フォーカス変更完了待ちのタイマ上限(msec)。</summary>
+        private const int SET_FOREGROUND_WAIT_MAX = 1000;
 
         /// <summary>
         /// <br>ロガーを設定する。</br>
@@ -78,9 +92,10 @@ namespace ExplorerSingleMode
                 if (NeedTabCount)
                 {
                     IsMin = IsIconic(Hwnd);
-                    if (IsMin) ShowWindow(Hwnd, SW_SHOWNORMAL);// 省くと最小化されたウィンドウのタブが0とカウントされる
+                    if (IsMin) ShowWindow(Hwnd, SW_SHOWNORMAL); // 省くと最小化されたウィンドウのタブが0とカウントされる
                 }
-                var TabNum = NeedTabCount ? FindElements(WinElm, "ShellTabWindowClass").Count : 1;
+                var elmCount = FindElements(WinElm, "ShellTabWindowClass");
+                var TabNum = NeedTabCount ? (elmCount.Count > 0 ? elmCount.Count : 1) : 1;
                 if (TabNum == 0)
                 {
                     LoggerInstance?.Debug($"HWND:0x{Hwnd:x8} ShellTabWindowClass not found.");
@@ -98,17 +113,25 @@ namespace ExplorerSingleMode
         /// <param name="Source">移動するタブの有るウィンドウのAutomationElementを指定する。</param>
         /// <param name="Target">移動先ウィンドウのAutomationElementとウィンドウハンドルのTupleを指定する。</param>
         /// <exception cref="NoTargetException">移動先のエクスプローラが閉じられていた場合に発生する。</exception>
-        public static void DragExplorerTab(Tuple<AutomationElement, IntPtr> Source, Tuple<AutomationElement, IntPtr> Target)
+        public static void DragExplorerTab(Tuple<AutomationElement, IntPtr> Source, Tuple<AutomationElement, IntPtr> Target, DummyForm dummyForm)
         {
+            uint winSwitchTime = 0;
             try
             {
+                SystemParametersInfoGet(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref winSwitchTime, 0);
+                SystemParametersInfoSet(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, 0, SPIF_SENDCHANGE);
                 BlockInput(true);
 
                 // 移動先のウインドウがない場合はSourceを次Target候補として例外で通知
-                if (Target is null) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
+                if (Target is null || Target.Item2 == Source.Item2) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
+                LoggerInstance.Debug($"Move tab source:0x{Source.Item1.Current.NativeWindowHandle} target:0x{Target.Item1.Current.NativeWindowHandle}");
                 // 移動先ウィンドウが最小化されている場合は戻す
                 var IsMin = IsIconic(Target.Item2);
-                if (IsMin) ShowWindow(Target.Item2, SW_SHOWNORMAL);
+                if (IsMin)
+                {
+                    ShowWindow(Target.Item2, SW_SHOWNORMAL);
+                    System.Threading.Thread.Sleep(100 + OperationWaitOffset);
+                }
                 if (!Target.Item1.Current.IsEnabled) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
 
                 // 移動先ウィンドウの座標情報取得
@@ -122,16 +145,15 @@ namespace ExplorerSingleMode
 
                 // ドラッグアンドドロップ操作
                 SetCursorPos(DragX, DragY);
-                SetForegroundWindow((IntPtr)Source.Item1.Current.NativeWindowHandle);
-                System.Threading.Thread.Sleep(100 + OperationWaitOffset);
+                AutomationElement.FromHandle(Source.Item2).SetFocus();
                 mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
                 System.Threading.Thread.Sleep(100 + OperationWaitOffset);
                 mouse_event(MOUSEEVENTF_MOVE, DRAG_SLIDE_X, 0, 0, 0);
                 System.Threading.Thread.Sleep(100 + OperationWaitOffset);
-                SetForegroundWindow(Target.Item2);
+                AutomationElement.FromHandle(Target.Item2).SetFocus();
                 var smx = GetSystemMetrics(SM_CXSCREEN);
                 var smy = GetSystemMetrics(SM_CYSCREEN);
-                var DropX = ((int)TgtRect.Right) * (65535 / smx);
+                var DropX = ((int)TgtRect.Left + DROP_OFFSET_X) * (65535 / smx);
                 var DropY = ((int)TgtRect.Y + DROP_OFFSET_Y) * (65535 / smy);
                 mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, DropX, DropY, 0, 0);
                 System.Threading.Thread.Sleep(200 + OperationWaitOffset);
@@ -142,9 +164,11 @@ namespace ExplorerSingleMode
                 if (IsMin) ShowWindow(Target.Item2, SW_MINIMIZE);
                 LoggerInstance?.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY}), operation wait offset:{OperationWaitOffset}(msec)");
             }
+            catch(Exception e) { LoggerInstance.Warn(e); }
             finally
             {
                 BlockInput(false);
+                SystemParametersInfoSet(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, winSwitchTime, SPIF_SENDCHANGE);
             }
         }
 
@@ -165,10 +189,29 @@ namespace ExplorerSingleMode
         /// </summary>
         /// <param name="rootElement">検索の起点とするAutomationElementを指定する。</param>
         /// <param name="automationClass">検索するウィンドウクラス名を指定する。</param>
-        /// <returns>クラス名が一致したAutomationElementのAutomationElementCollectionを返す。</returns>
-        private static AutomationElementCollection FindElements(AutomationElement rootElement, string automationClass)
+        /// <param name="NeedCheckSibling">rootElementの兄弟要素を確認するか指定する。既定値は false。</param>
+        /// <returns>クラス名が一致した最初のAutomationElementのリストを返す。</returns>
+        private static List<AutomationElement> FindElements(AutomationElement rootElement, string automationClass, bool NeedCheckSibling = false)
         {
-            return rootElement.FindAll(TreeScope.Subtree, new PropertyCondition(AutomationElement.ClassNameProperty, automationClass));
+            var result = new List<AutomationElement>();
+            try
+            {
+                var child = TreeWalker.ContentViewWalker.GetFirstChild(rootElement);
+                if (child != null)
+                {
+                    if (child.Current.ClassName == automationClass) result.Add(child);
+                    var nextLevel = FindElements(child, automationClass, true);
+                    if (nextLevel is not null) result.AddRange(nextLevel);
+                }
+                if (NeedCheckSibling)
+                {
+                    if (rootElement.Current.ClassName == automationClass) result.Add(rootElement);
+                    var nextElement = TreeWalker.ContentViewWalker.GetNextSibling(rootElement);
+                    if (nextElement != null) result.AddRange(FindElements(nextElement, automationClass, true));
+                }
+            }
+            catch(Exception ex) { LoggerInstance.Warn(ex.ToString()); }
+            return result;
         }
 
 #nullable enable
@@ -177,7 +220,7 @@ namespace ExplorerSingleMode
 #nullable disable
 
         /// <summary>座標のスタック。</summary>
-        private static Stack<Point> PointStack = new Stack<Point>();
+        private static readonly Stack<Point> PointStack = new Stack<Point>();
     }
 
     /// <summary>ドロップターゲットが存在しなかった場合にスローされる例外。</summary>

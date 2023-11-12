@@ -8,6 +8,7 @@ using Microsoft.Win32;
 
 class Program
 {
+    [STAThread]
     static void Main(string[] args)
     {
         logger.Info("Start.");
@@ -15,6 +16,17 @@ class Program
         ExplorerSingleMode.WindowManager.SetLogger(logger);
         ExplorerSingleMode.WindowManager.OperationWaitOffset = args.Length > 0 && int.TryParse(args[0], out int argv) ? int.Parse(args[0]) : 0;
 
+        var mainTask = Task.Run(() => { MainTask(dummyForm); });
+        dummyForm.SetLogger(logger);
+        Application.Run(dummyForm);
+        Cancel.Cancel();
+        mainTask.Wait();
+
+        logger.Info("Terminate.");
+    }
+
+    private static void MainTask(DummyForm dummyForm)
+    {
         var winElmMap = new Dictionary<IntPtr, Tuple<AutomationElement, IntPtr>>();
         var tabNumMap = new Dictionary<IntPtr, int>();
 
@@ -75,7 +87,7 @@ class Program
                 {
                     var src = item.Value.Item1;
                     if (idx > 0) src = ExplorerSingleMode.WindowManager.GetExprolerInfo(item.Key, false).Item1; // タブが減るとHWDが振り直されるため再取得
-                    ExplorerSingleMode.WindowManager.DragExplorerTab(new Tuple<AutomationElement, IntPtr>(src, item.Key), tgt);
+                    ExplorerSingleMode.WindowManager.DragExplorerTab(new Tuple<AutomationElement, IntPtr>(src, item.Key), tgt, dummyForm);
                 }
             }
         }
@@ -107,7 +119,7 @@ class Program
                 if (ExplorerInf is not null)
                 {
                     WindowManager.StoreMousePosition();
-                    ExplorerSingleMode.WindowManager.DragExplorerTab(new Tuple<AutomationElement, IntPtr>(ExplorerInf.Item1, hwnd), tgt);
+                    ExplorerSingleMode.WindowManager.DragExplorerTab(new Tuple<AutomationElement, IntPtr>(ExplorerInf.Item1, hwnd), tgt, dummyForm);
                     WindowManager.RestoreMousePosition();
                     dupeCheck.Add(hwnd);
                 }
@@ -120,7 +132,7 @@ class Program
             catch (NoTargetException ex)            // ドロップターゲット消失
             {
                 logger.Info("Lost drop target.");
-                tgt =new Tuple<AutomationElement, IntPtr>(AutomationElement.FromHandle(ex.ElementHwnd), ex.ParentHwnd); // ドロップソースを新たなドロップターゲットに設定
+                tgt = new Tuple<AutomationElement, IntPtr>(AutomationElement.FromHandle(ex.ElementHwnd), ex.ParentHwnd); // ドロップソースを新たなドロップターゲットに設定
                 WindowManager.RestoreMousePosition();
             }
             catch (Exception ex)                    // その他例外はログ出力
@@ -131,7 +143,7 @@ class Program
         Automation.RemoveAllEventHandlers();
         Cancel.Dispose();
         EventQueue.Dispose();
-        logger.Info("Teminated.");
+        logger.Info("Main task teminated.");
     }
 
     /// <summary>
@@ -142,7 +154,7 @@ class Program
     private static void OnTermination(object sender, SessionEndingEventArgs e)
     {
         logger.Debug("Session end requested.");
-        Cancel.Cancel();
+        dummyForm.Close();
         SystemEvents.SessionEnding -= OnTermination;
     }
 
@@ -165,6 +177,8 @@ class Program
         }
     }
 
+    /// <summary>ダミーFormのインスタンス。</summary>
+    private static DummyForm dummyForm = new DummyForm();
     /// <summary>エクスプローラのウィンドウ生成イベントキュー。</summary>
     private static BlockingCollection<IntPtr> EventQueue = new BlockingCollection<IntPtr>();
     /// <summary>イベントキューのキャンセルオブジェクト。</summary>
