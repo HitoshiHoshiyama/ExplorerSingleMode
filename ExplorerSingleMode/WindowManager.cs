@@ -3,6 +3,7 @@ using System.Windows.Automation;
 using NLog;
 using ExplorerSingleMode;
 using System.Runtime.CompilerServices;
+using System.Windows;
 
 namespace ExplorerSingleMode
 {
@@ -13,6 +14,8 @@ namespace ExplorerSingleMode
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         [DllImport("user32.dll", SetLastError = true)]
         static extern void SetCursorPos(int X, int Y);
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern void SetWindowPos(IntPtr Hwnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
         [DllImport("user32.dll", EntryPoint = "SystemParametersInfo", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern Boolean SystemParametersInfoGet(UInt32 action, UInt32 param, ref UInt32 vparam, UInt32 init);
@@ -25,6 +28,8 @@ namespace ExplorerSingleMode
         static extern int GetSystemMetrics(int smIndex);
         [DllImport("user32.dll", SetLastError = true)]
         static extern bool IsIconic(IntPtr hWnd);
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool IsZoomed(IntPtr hWnd);
         [System.Runtime.InteropServices.DllImportAttribute("user32.dll", EntryPoint = "BlockInput")]
         [return: System.Runtime.InteropServices.MarshalAsAttribute(System.Runtime.InteropServices.UnmanagedType.Bool)]
         private static extern bool BlockInput([System.Runtime.InteropServices.MarshalAsAttribute(System.Runtime.InteropServices.UnmanagedType.Bool)] bool fBlockIt);
@@ -38,12 +43,20 @@ namespace ExplorerSingleMode
         private const int SM_CYSCREEN = 1;
 
         private const int SW_SHOWNORMAL = 1;
+        private const int SW_MAXIMIZE = 3;
+        private const int SW_SHOW = 5;
         private const int SW_MINIMIZE = 6;
+
+        private const int HWND_TOP = 0;
+        private const int SWP_NOSIZE = 0x0001;
 
         private const uint SPI_GETFOREGROUNDLOCKTIMEOUT = 0x2000;
         private const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
         private const int SPIF_SENDCHANGE = 2;
 
+        // TODO: WINDOW_TABLIST_HEIGHTをちゃんとAutomationElementから取得する
+        /// <summary>エクスプローラタブエリア高さ(拡大とかあるから本当はAutomationElementから取得すべき)</summary>
+        private const int WINDOW_TABLIST_HEIGHT = 48;
         /// <summary>ドラッグ時のX座標補正値。</summary>
         private const int DRAG_OFFSET_X = 50;
         /// <summary>ドラッグ時のY座標補正値。</summary>
@@ -125,14 +138,25 @@ namespace ExplorerSingleMode
                 // 移動先のウインドウがない場合はSourceを次Target候補として例外で通知
                 if (Target is null || Target.Item2 == Source.Item2) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
                 LoggerInstance.Debug($"Move tab source:0x{Source.Item1.Current.NativeWindowHandle} target:0x{Target.Item1.Current.NativeWindowHandle}");
-                // 移動先ウィンドウが最小化されている場合は戻す
+                // 移動先ウィンドウが最小化(最大化)されている場合は戻す
                 var IsMin = IsIconic(Target.Item2);
                 if (IsMin)
+                {
+                    ShowWindow(Target.Item2, SW_SHOW);
+                    System.Threading.Thread.Sleep(100 + OperationWaitOffset);
+                }
+                if (!Target.Item1.Current.IsEnabled) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
+                var IsMax = IsZoomed(Target.Item2);
+                if (IsMax)
                 {
                     ShowWindow(Target.Item2, SW_SHOWNORMAL);
                     System.Threading.Thread.Sleep(100 + OperationWaitOffset);
                 }
-                if (!Target.Item1.Current.IsEnabled) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
+
+                // ウィンドウが重なっていた場合ずらす
+                var SrcMovePont = GetWindowMovableSpacePosition(Source.Item1, Target.Item1);
+                SetWindowPos(Source.Item2, (IntPtr)HWND_TOP, SrcMovePont.X, SrcMovePont.Y, 0, 0, SWP_NOSIZE);
+                System.Threading.Thread.Sleep(100 + OperationWaitOffset);
 
                 // 移動先ウィンドウの座標情報取得
                 var TgtRect = Target.Item1.Current.BoundingRectangle;
@@ -161,6 +185,7 @@ namespace ExplorerSingleMode
                 System.Threading.Thread.Sleep(900 + OperationWaitOffset);
 
                 // 移動先ウィンドウを元の状態に戻す
+                if (IsMax) ShowWindow(Target.Item2, SW_MAXIMIZE);
                 if (IsMin) ShowWindow(Target.Item2, SW_MINIMIZE);
                 LoggerInstance?.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY}), operation wait offset:{OperationWaitOffset}(msec)");
             }
@@ -214,13 +239,48 @@ namespace ExplorerSingleMode
             return result;
         }
 
+        /// <summary>
+        /// <br>Sourceウィンドウの移動可能な座標を取得する。</br>
+        /// <br>適切な移動先が見付からなかった場合は、現在の座標を返す。</br>
+        /// </summary>
+        /// <param name="Src">タブ移動元ウィンドウのAutomationElementを指定する。</param>
+        /// <param name="Tgt">タブ移動先ウィンドウのAutomationElementを指定する。</param>
+        /// <returns>移動先または現在の座標を返す。</returns>
+        private static System.Drawing.Point GetWindowMovableSpacePosition(AutomationElement Src, AutomationElement Tgt)
+        {
+            if (!Src.Current.BoundingRectangle.IntersectsWith(Tgt.Current.BoundingRectangle))
+                // 両者が重ならない場合は元の座標をそのまま返す
+                return new System.Drawing.Point((int)Src.Current.BoundingRectangle.X, (int)Src.Current.BoundingRectangle.Y);
+            var tgtRect = Tgt.Current.BoundingRectangle;
+            var srcRect = Src.Current.BoundingRectangle;
+            var tgtScreen = Screen.FromRectangle(new Rectangle((int)tgtRect.X, (int)tgtRect.Y, (int)tgtRect.Width, (int)tgtRect.Height));
+            var left = (tgtRect.Left - tgtScreen.WorkingArea.Left) >= srcRect.Width;
+            var right = (tgtScreen.WorkingArea.Right - tgtRect.Right) >= srcRect.Width;
+            if (left) return new System.Drawing.Point((int)tgtScreen.WorkingArea.Left, (int)srcRect.Top);   // Tgtの左に配置
+            else if (right) return new System.Drawing.Point((int)tgtRect.Right, (int)srcRect.Top);          // Tgtの右に配置
+            var upper = (tgtRect.Top - tgtScreen.WorkingArea.Top) >= srcRect.Height;
+            var lower = (tgtScreen.WorkingArea.Bottom - tgtRect.Bottom) >= WINDOW_TABLIST_HEIGHT;                // タブリスト分の高さだけあればヨシ
+            if (upper) return new System.Drawing.Point((int)srcRect.Left, (int)tgtScreen.WorkingArea.Top);  // Tgtの上に配置
+            else if (lower) return new System.Drawing.Point((int)tgtRect.Right, (int)srcRect.Top);          // Tgtの下に配置
+            // Tgtの存在するScreenにはスペースが無かった
+            foreach (var screen in Screen.AllScreens)
+            {
+                if (screen.Bounds == tgtScreen.Bounds) continue;    // さっき見た
+                if (screen.WorkingArea.Width > srcRect.Width && screen.WorkingArea.Height > srcRect.Height)
+                    // 収まる別のScreenがあった
+                    return new System.Drawing.Point((int)screen.WorkingArea.Left, (int)screen.WorkingArea.Top);
+            }
+            // 移動は無し
+            return new System.Drawing.Point((int)Src.Current.BoundingRectangle.X, (int)Src.Current.BoundingRectangle.Y);
+        }
+
 #nullable enable
         /// <summary>ロガーのインスタンス。</summary>
         private static Logger? LoggerInstance { get; set; }
 #nullable disable
 
         /// <summary>座標のスタック。</summary>
-        private static readonly Stack<Point> PointStack = new Stack<Point>();
+        private static readonly Stack<System.Drawing.Point> PointStack = new Stack<System.Drawing.Point>();
     }
 
     /// <summary>ドロップターゲットが存在しなかった場合にスローされる例外。</summary>
