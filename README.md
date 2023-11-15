@@ -11,7 +11,14 @@ Windows11でタブ化したエクスプローラをシングルウィンドウ�
 
 - Windows11 22H2以降
 - .NET 6.0
+
   動作確認はx64環境でしか行っていません。
+
+## 利用条件
+
+このソフトウェアはMITライセンスの元で公開されたオープンソースソフトウェアです。  
+利用する上で対価不要なためフリーソフトウェアとして扱って問題ありませんが、このソフトウェアを使用して発生したいかなる損害についても責任を負いません。  
+ライセンスの全文は[こちら](https://opensource.org/licenses/mit-license.php)を参照してください。
 
 ## 使用方法
 
@@ -45,6 +52,11 @@ Windows11でタブ化したエクスプローラをシングルウィンドウ�
 ## TODO
 
 - 操作デモ
+
+## 作者連絡先
+
+このプロジェクトは[こちらのサイト](https://github.com/HitoshiHoshiyama/ExplorerSingleMode)にてメンテナンスされています。  
+問題がある場合、[こちらからIssueを登録](https://github.com/HitoshiHoshiyama/ExplorerSingleMode/issues)していただけると助かります。
 
 Copyright © 2023 Hitoshi Hoshiyama All Rights Reserved.  
 This project is licensed under the MIT License, see the [this site](https://opensource.org/licenses/mit-license.php).
