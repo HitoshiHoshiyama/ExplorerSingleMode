@@ -24,7 +24,7 @@ namespace ExplorerSingleMode
 
             this.Width = 150;
             this.Height = 100;
-            this.FormBorderStyle = FormBorderStyle.None;
+            this.FormBorderStyle = FormBorderStyle.FixedToolWindow;
             this.ShowInTaskbar = false;
             this.AllowTransparency = true;
             this.TopMost = true;
