@@ -143,7 +143,8 @@ namespace ExplorerSingleMode
                 var IsMin = IsIconic(Target.Item2);
                 if (IsMin)
                 {
-                    ShowWindow(Target.Item2, SW_SHOW);
+                    LoggerInstance.Debug($"Try restore iconic window(Hwnd:{Target.Item2:x8})");
+                    ShowWindow(Target.Item2, SW_SHOWNORMAL);
                     System.Threading.Thread.Sleep(100 + OperationWaitOffset);
                 }
                 if (!Target.Item1.Current.IsEnabled) throw new NoTargetException((IntPtr)Source.Item1.Current.NativeWindowHandle, Source.Item2);
