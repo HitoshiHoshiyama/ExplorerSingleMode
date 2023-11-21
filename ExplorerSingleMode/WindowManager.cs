@@ -4,6 +4,7 @@ using NLog;
 using ExplorerSingleMode;
 using System.Runtime.CompilerServices;
 using System.Windows;
+using System.Runtime.ExceptionServices;
 
 namespace ExplorerSingleMode
 {
@@ -189,7 +190,12 @@ namespace ExplorerSingleMode
                 if (IsMin) ShowWindow(Target.Item2, SW_MINIMIZE);
                 LoggerInstance?.Debug($"Mouse move:({DragX},{DragY})->({DropX},{DropY}), operation wait offset:{OperationWaitOffset}(msec)");
             }
-            catch(Exception e) { LoggerInstance.Warn(e); }
+            catch (NoTargetException e)
+            {
+                var edi = ExceptionDispatchInfo.Capture(e);
+                edi.Throw();
+            }
+            catch (Exception e) { LoggerInstance.Warn(e); }
             finally
             {
                 BlockInput(false);
